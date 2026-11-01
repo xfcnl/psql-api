@@ -1,0 +1,22 @@
+# MySQL API - Apache / LiteSpeed 配置
+# 适用于 InfinityFree（LiteSpeed 兼容 Apache 2.4 语法）
+
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 把 Authorization 头透传给 PHP（InfinityFree 上 Bearer token 依赖这个）
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # 前端控制器：所有请求都交给 index.php（已存在的文件/目录除外）
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+# 禁止通过 HTTP 直接访问配置文件和 SQL 文件
+<FilesMatch "^(config\.php|.*\.sql|.*\.md)$">
+    Require all denied
+</FilesMatch>

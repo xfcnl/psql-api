@@ -71,4 +71,36 @@ return [
     'max_limit' => 500,
     // 调试模式：true 时错误信息会返回给客户端（开发用），上线请改成 false
     'debug' => true,
+
+    // ---------- 文件上传 ----------
+    // 开启后，POST /api/upload 可用于上传文件
+    'upload' => [
+        'enabled'       => true,
+        // 存储目录（相对于 htdocs/），必须可写
+        'dir'           => 'uploads',
+        // 允许的 MIME 类型，* 表示不限制
+        'allowed_types' => ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'text/plain'],
+        // 最大文件大小（字节），默认 10MB
+        'max_size'      => 10 * 1024 * 1024,
+        // 是否按日期分目录存储（yyyy/mm/dd/）
+        'date_dir'      => true,
+        // 是否保留原始文件名（false = 用随机名防冲突）
+        'keep_name'     => false,
+    ],
+
+    // ---------- 分片上传（断点续传）----------
+    // 用于大文件分片上传，配合前端切片库（如 Uppy、WebUploader、自定义切片）
+    'chunked_upload' => [
+        'enabled'       => true,
+        // 分片临时存储目录（相对于 htdocs/）
+        'temp_dir'      => 'uploads/.chunks',
+        // 单个分片最大大小（字节），默认 5MB
+        'chunk_max_size' => 5 * 1024 * 1024,
+        // 整个文件最大大小（字节），默认 2GB
+        'file_max_size'  => 2 * 1024 * 1024 * 1024,
+        // 分片过期时间（秒），超过此时间未完成合并的分片会被清理，默认 24h
+        'chunk_ttl'     => 86400,
+        // 合并后是否保留原始文件名
+        'keep_name'     => false,
+    ],
 ];

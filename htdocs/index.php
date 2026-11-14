@@ -31,14 +31,25 @@ $endpoint = isset($segments[1]) ? $segments[1] : '';
 $sub = isset($segments[2]) ? $segments[2] : null;
 
 // ---------- 鉴权 ----------
-// 公开：/api/health、/api/auth/login
+// 公开：/api/health、/api/auth/login、/api/upload (GET)
 // 其余：需要 JWT 或 master API key
-$isPublic = ($endpoint === 'health') || ($endpoint === 'auth' && $sub === 'login');
+$isPublic = ($endpoint === 'health')
+    || ($endpoint === 'auth' && $sub === 'login')
+    || ($endpoint === 'upload' && $method === 'GET');
 if (!$isPublic) {
     Auth::requireAuth();
 }
 
 switch ($endpoint) {
+    // ---- 文件上传（普通 + 分片）----
+    case 'upload':
+        if ($sub === 'chunked') {
+            handleChunkedUpload($segments[3] ?? null, $method, $segments);
+        } else {
+            handleUpload($sub, $method, $segments);
+        }
+        break;
+
     // ---- 健康检查（公开）----
     case 'health':
         Response::success([
@@ -179,4 +190,105 @@ function handleAuth($sub, $method)
     }
 
     Response::error('not_found', 'Unknown auth endpoint.', 404);
+}
+
+/**
+ * 处理 /api/upload/* 端点
+ */
+function handleUpload($sub, $method, $segments)
+{
+    // GET /api/upload                    -> 列出文件
+    // GET /api/upload/{filename}         -> 下载文件
+    // POST /api/upload                   -> 上传文件
+    // DELETE /api/upload/{filename}      -> 删除文件
+
+    if ($sub === '' || $sub === null) {
+        // /api/upload
+        switch ($method) {
+            case 'GET':
+                Response::success(UploadController::listFiles());
+                break;
+            case 'POST':
+                UploadController::upload();
+                break;
+            default:
+                Response::error('method_not_allowed', 'Method not allowed.', 405);
+        }
+        return;
+    }
+
+    // /api/upload/{filename}
+    $filename = $sub;
+    switch ($method) {
+        case 'GET':
+            UploadController::getFile($filename);
+            break;
+        case 'DELETE':
+            UploadController::deleteFile($filename);
+            break;
+        default:
+            Response::error('method_not_allowed', 'Method not allowed.', 405);
+    }
+}
+
+/**
+ * 处理 /api/upload/chunked/* 端点
+ *
+ * 路由结构：
+ *   POST   /api/upload/chunked/init                    -> 初始化
+ *   POST   /api/upload/chunked/{upload_id}             -> 上传分片
+ *   GET    /api/upload/chunked/{upload_id}             -> 查询进度
+ *   POST   /api/upload/chunked/{upload_id}/complete    -> 合并完成
+ *   DELETE /api/upload/chunked/{upload_id}             -> 取消上传
+ */
+function handleChunkedUpload($sub, $method, $segments)
+{
+    // /api/upload/chunked/init
+    if ($sub === 'init') {
+        if ($method !== 'POST') {
+            Response::error('method_not_allowed', 'Only POST is allowed.', 405);
+        }
+        ChunkedUploadController::init();
+        return;
+    }
+
+    // /api/upload/chunked/{upload_id}[/complete]
+    $uploadId = $sub;
+    $action = $segments[4] ?? '';
+
+    if ($action === 'complete') {
+        // POST /api/upload/chunked/{upload_id}/complete
+        if ($method !== 'POST') {
+            Response::error('method_not_allowed', 'Only POST is allowed.', 405);
+        }
+        ChunkedUploadController::complete($uploadId);
+        return;
+    }
+
+    // /api/upload/chunked/{upload_id}[/progress]
+    $action = $segments[4] ?? '';
+
+    if ($action === 'progress') {
+        // GET /api/upload/chunked/{upload_id}/progress (SSE)
+        if ($method !== 'GET') {
+            Response::error('method_not_allowed', 'Only GET is allowed.', 405);
+        }
+        ChunkedUploadController::progressSSE($uploadId);
+        return;
+    }
+
+    // /api/upload/chunked/{upload_id}
+    switch ($method) {
+        case 'POST':
+            ChunkedUploadController::uploadChunk($uploadId);
+            break;
+        case 'GET':
+            ChunkedUploadController::status($uploadId);
+            break;
+        case 'DELETE':
+            ChunkedUploadController::abort($uploadId);
+            break;
+        default:
+            Response::error('method_not_allowed', 'Method not allowed.', 405);
+    }
 }
